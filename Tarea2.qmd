@@ -1,0 +1,376 @@
+---
+title: "Violence, education and electoral results."
+author: "José Angel Alonso Prieto"
+format:
+  pdf:
+    documentclass: article
+    classoption: landscape
+    geometry: margin=1cm
+    fig-align: center
+    tbl-align: center
+editor: visual
+---
+
+Durante el 2010, en un planeta muy lejano llamado Carthan, atravesaron una ola de violencia intergaláctica en la que diversas localidades experimentaron un aumento significativo en los niveles de homicidios. Esta situación generó preocupación sobre posibles efectos colaterales de la violencia en diversas dimensiones del desarrollo infantil, como la educación.
+
+El gobierno de Carthan se acercó a la consultora en la que trabajas, debido a que busca analizar si este aumento en la violencia tuvo un impacto negativo sobre el desempeño académico de los niños en el planeta. Como analista del equipo de economistas, te piden que tomes las riendas del proyecto.
+
+Para hacerlo, te proporcionan dos bases de datos, ambas correspondientes al año 2010. La primera, llamada **datos_individuales**, contiene información a nivel individual de 439 niños que realizaron un examen de conocimientos generales llamado *Connected* ese año. En ella encontrarás su puntaje, así como diversas características de la localidad donde vivían al momento de realizar la prueba, como datos electorales, acceso a servicios públicos, características de la vivienda, y la variable **deathsx**, que indica la tasa de homicidios por cada 100,000 habitantes de la localidad. Por otro lado, te entregan la base **datos_municipales**, que contiene observaciones a nivel municipal de 152 localidades de interés para el análisis.
+
+#### 1) Carthan es un país con mucha desigualdad, con localidades que viven en condiciones de pobreza extrema. Además, cada localidad presenta características sociales, tradiciones e ideologías diversas, lo que hace de Carthan un planeta culturalmente muy rico. Es importante para el gobierno conocer los efectos de la guerra intergaláctica para poder tomar acción y diseñar políticas que mejoren las condiciones de vida de las infancias.
+
+##### 1a) Lo primero que te pide tu jefe es estimar la siguiente regresión:
+
+$$
+p\_connected_i = \beta_0 + \beta_1 deathsx_m + \epsilon_i
+$$
+
+```{r}
+#| include: false
+rm(list = ls())
+if (!require("pacman")) install.packages("pacman")
+
+
+
+pacman::p_load(tidyverse, stargazer, sandwich, hdm,  magrittr, MatchIt, car, AER, schoolmath, jtools,  
+               estimatr, fixest, kableExtra, scales,ggpubr,lmtest,pwr,hdm,sandwich,gt,AER,rdrobust,rddensity,MatchIt,broom,cobalt)
+
+df1 <- read.csv("datos_individuales.csv") %>% janitor::clean_names()
+df2 <- read.csv("datos_municipios.csv") %>% janitor::clean_names()
+
+```
+
+```{r}
+#| warning: false
+#| echo: false
+r0<-lm(p_conncected~deathsx,data = df1)
+r0 %>% stargazer(summary = F,
+                    rownames = F,
+           type = "text")
+
+```
+
+###### Regresión prueba vs índice de moralidad
+
+```{r}
+#| warning: false
+#| echo: false
+ ggplot(df1, aes(y= p_conncected,x= (deathsx))) +            
+  geom_point() +                                      
+  stat_smooth(method = "lm", 
+               formula = y ~ x, 
+              geom = "smooth") 
+```
+
+La estimación de la regresión entre p_connected y deathsx muestra un coeficiente prácticamente nulo y no significativo (p-valor = 0.989 r2 es casi cero, indicando que deathsx no explica la variación en p_connected.
+
+En la gráfica se confirma la ausencia de una relación, así como la dispersión y concentraciones verticales debido a la repetición de valores de deathsx entre individuos del mismo municipio. Los resultados reflejan que la regresión captura una relación concreta.
+
+##### 1b) ¿Cuál es un problema fundamental en la ecuación anterior? Identifica
+
+La regresión inicial presenta varios problemas fundamentales.
+
+-   Primero, la repetición del valor de deathsx entre individuos del mismo municipio viola la independencia de los errores, generando correlación dentro de los municipios y afectando la validez de las inferencias.
+
+-   Segundo, si el error está correlacionado con el regresor, el estimador OLS se vuelve sesgado e inconsistente, por lo que los coeficientes no reflejan efectos causales reales.
+
+-   Tercero, la omisión de variables relevantes que están correlacionadas con los regresores incluidos genera sesgo adicional, haciendo que la estimación no sea insesgada. Además, la estructura de los datos limita la variabilidad de deathsx entre individuos, lo que dificulta la identificación de relaciones causales y amplifica cualquier error de medición o especificación. En conjunto, estos problemas implican que la regresión por MCO no respeta la independencia de los errores, está afectada por sesgo de variables omitidas y carece de variabilidad suficiente en el regresor. Por tanto, el efecto estimado de deathsx sobre p_connected no puede interpretarse como causal, lo que justifica el uso de estrategias de estimación alternativas como las variables instrumentales.
+
+#### 2) Uno de tus jefes te recomienda hacer uso de una variable instrumental para controlar estos posibles sesgos. Te comenta que en un artículo publicado hace un par de años se utilizaron datos electorales para estimar la violencia dentro del país.
+
+#### En ese estudio, se identificó en qué localidades había ganado el partido político PDU, ya que se encontró evidencia de que tenían incentivos y recursos para aplicar con mayor rigor las fuertes medidas contra la violencia establecidas a nivel federal, debido a que el presidente del país formaba parte de este mismo partido.
+
+##### 2a) Establece las siguientes ecuaciones y estímalas:Calcula el LATE y compara con lo que obtuviste en la estimación de OLS.
+
+###### Forma reducida
+
+$$
+p\_connected_i = \pi_0 + \pi_1 pdu_m + u_i
+$$
+
+```{r}
+#| warning: false
+#| echo: false
+r1 <- lm(p_conncected ~ pdu, data = df1)
+
+r1 %>% stargazer(summary = F,
+                    rownames = F,
+           type = "text")
+```
+
+###### Primera etapa
+
+$$
+deathsx_m = \gamma_0 + \gamma_1 pdu_m + v_i
+$$
+
+```{r}
+#| warning: false
+#| echo: false
+r2 <- lm(deathsx ~ pdu, data = df1)
+r2 %>% stargazer(summary = F,
+                    rownames = F,
+           type = "text")
+```
+
+###### IV
+
+$$
+p\_connected_i = \beta_0 + \beta_1 deathsx_m + \epsilon_i
+$$
+
+```{r}
+#| warning: false
+#| echo: false
+r3 <- ivreg(p_conncected ~ deathsx | pdu, data = df1)
+r3 %>% stargazer(summary = F,
+                    rownames = F,
+           type = "text")
+```
+
+###### Prueba F IV
+
+```{r}
+#| warning: false
+#| echo: false
+summary(r3, diagnostics = TRUE)
+```
+
+La estimación OLS sugiere un efecto nulo de la violencia sobre el desempeño académico, aunque puede estar sesgada por endogeneidad. La estimación IV, usando pdu como instrumento, corrige este sesgo y muestra un efecto negativo mayor en magnitud, aunque el resultado sigue sin ser estadísticamente significativo. (LATE -0.323)
+
+##### 2b) ¿A que tipos de localidades está asociado el resultado del ATE que calculaste en en inciso pasado? Explica bajo este contexto quienes son los loscompliers, always takers, never takers.
+
+La estimación obtenida en el inciso anterior corresponde a un Local Average Treatment Effect (LATE), el cual identifica el efecto causal solo para las localidades "compliers", es decir, aquellas donde la violencia (deathsx) cambió como consecuencia de que el partido político pdu ganó en la elección municipal.
+
+Por lo que:
+
+-   Compliers: Son los municipios cuya exposición a violencia sí depende del triunfo de pdu. Cuando gana pdu, su nivel de violencia cambia; cuando no gana, permanece diferente.
+
+-   Always Takers: Son municipios donde la violencia sería alta o baja de todos modos, independientemente del resultado electoral (ganara o no el partido pdu).
+
+-   Never Takers: Son municipios que no cambiarían su nivel de violencia bajo ninguna circunstancia política; su exposición a la violencia es independiente del triunfo de pdu.
+
+Por lo tanto, el resultado del LATE obtenido aplica exclusivamente a los municipios "compliers" y no puede generalizarse a todos los municipios del país.
+
+##### 2c) Uno de los analistas no está muy convencido de que este sea un instrumento válido para explicar la violencia en el país.
+
+###### c-1Explíca brevemente, bajo el contexto del estudio, ¿qué supuestos se tendrían que cumplir para que este instrumento fuera válido?
+
+Para que el triunfo del partido pdu sea un instrumento válido para explicar la violencia, deben cumplirse relevancia y exoneneidad.
+
+Relevancia: el instrumento debe estar correlacionado con la violencia. En este caso, la regresión de deathsx sobre pdu arroja un F de 75.888 (sugerido \>10), confirmando que pdu predice de manera significativa los cambios en violencia.
+
+Exogeneidad: el instrumento no debe estar correlacionado con factores no observados que afecten directamente el desempeño académico. La comparación de variables de calidad de vida entre municipios ganadores y no ganadores de pdu no muestra diferencias sistemáticas importantes, lo que apoya la suposición de exogeneidad.
+
+###### c-2Con los datos que tienes, intenta demostrar que estos supuestos se cumplen y explica tus resultados. *(Hint: recuerda que tienes otros datos municipales relacionados con la calidad de vida en la base).*
+
+```{r}
+#| warning: false
+#| echo: false
+# Calcular medias por grupo (pdu = 0 y pdu = 1)
+m1 <- df1 %>%
+  group_by(pdu) %>%
+  summarise(across(c(analfabetismo, sin_acceso_energia, sin_drenaje, sin_edbasica, pisotierra), 
+                   ~ mean(.x, na.rm = TRUE)), .groups = "drop")
+
+t_bal <- map_dfr(c("analfabetismo", "sin_acceso_energia", "sin_drenaje", "sin_edbasica", "pisotierra"), function(var) {
+  model <- lm(reformulate("pdu", response = var), data = df1)
+  results <- summ(model, robust = "HC1")$coeftable[2, ]
+  
+  tibble(
+    variable = var,
+    pdu1_mean = sprintf("%.2f", m1 %>% filter(pdu == 1) %>% pull(var)),
+    pdu0_mean = sprintf("%.2f", m1 %>% filter(pdu == 0) %>% pull(var)),
+    diff = round(results[1], 2),
+    t_stat = round(results[3], 2),
+    pvalue = round(results[4], 3)
+  )
+})
+
+stargazer(t_bal, summary = FALSE,
+          title = "Tabla de Balance Municipal entre Municipios con y sin PDU",
+          type = "text",
+          digits = 2,
+          align = TRUE)
+
+```
+
+#### 3) Una de las personas de tu equipo está preocupada por el uso de este instrumento, debido a que hay evidencia de fuertes diferencias entre las características del electorado en las localidades donde gana el PDU y aquellas donde no. Para resolver este problema, deciden incluir también la variable **spread**, la cual indica el margen de ganancia o pérdida de este partido político en las elecciones locales.
+
+##### 3a) ¿Por qué es un problema que el electorado tenga características distintas entre las localidades gobernadas por el PDU y aquellas donde el PDU no ganó?
+
+Si las características del electorado son distintas cerca del umbral de corte, no podemos atribuir las diferencias de resultados al efecto de ganar o perder el PDU, porque se rompe el supuesto de continuidad necesario para la identificación causal.
+
+##### 3b)Explica por qué la inclusión de esta variable presenta una posible solución para esta problemática.
+
+El *spread* permite usar un diseño donde los municipios apenas ganadores y apenas perdedores son comparables, resolviendo así el problema de diferencias sistemáticas en el electorado.
+
+##### 3c) Calcula el *bandwidth* óptimo, usando como punto de *cutoff* el 0. ¿Por qué necesitamos calcular un *bandwidth* óptimo para nuestra variable *spread*?
+
+El bandwidth óptimo estimado fue de 0.009 a ambos lados del umbral, utilizando un kernel triangular, El bandwidth óptimo balancea sesgo y varianza e, asegurando que la comparación entre municipios cerca del cutoff sea válida.
+
+##### 3d)A partir de ahora trabajaremos con la base **datos_municipales**, donde encontrarás observaciones a nivel municipio de 152 localidades de interés. Estas localidades fueron seleccionadas por la literatura de acuerdo a su **spread**, considerando únicamente aquellas en las que el PDU ganó por un margen entre (−0.055, 0.055).
+
+```{r}
+#| warning: false
+#| echo: false
+rd_result <- rdrobust(y = df2$deathsx, x = df2$spread, c = 0)
+
+summary(rd_result)
+
+```
+
+```{r}
+#| warning: false
+#| echo: false
+# 1. Filtrar municipios cerca del cutoff
+df2_filt <- df2 %>%
+  filter(spread >= -0.055, spread <= 0.055)
+
+# 2. Crear bins de 0.005
+df2_filt <- df2_filt %>%
+  mutate(bin = cut(spread, breaks = seq(-0.055, 0.055, by = 0.005), include.lowest = TRUE, right = FALSE))
+
+# 3. Calcular media ponderada de deathsx en cada bin
+tabla_bins <- df2_filt %>%
+  group_by(bin) %>%
+  summarise(
+    spread_bin = mean(spread, na.rm = TRUE),
+    deathsx_weighted = sum(deathsx * pob_loc, na.rm = TRUE) / sum(pob_loc, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  filter(!is.na(spread_bin))
+
+
+```
+
+```{r}
+#| warning: false
+#| echo: false
+ggplot(tabla_bins, aes(x = spread_bin, y = deathsx_weighted)) +
+  geom_point(size = 2) +
+  geom_smooth(data = tabla_bins %>% filter(spread_bin < 0), method = "lm", formula = y ~ poly(x, 2), se = TRUE, color = "blue") +
+  geom_smooth(data = tabla_bins %>% filter(spread_bin >= 0), method = "lm", formula = y ~ poly(x, 2), se = TRUE, color = "red") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "darkred") +
+  labs(title = "Regresión Discontinua: Efecto de ganar PDU",
+       x = "Spread electoral",
+       y = "Media ponderada de deathsx") +
+  theme_minimal()
+
+```
+
+##### 3e)Continúa usando la base **datos_municipales**; el *bandwidth* seleccionado en esta base es óptimo de acuerdo con la literatura.
+
+```{r}
+#| warning: false
+#| echo: false
+summary(rd_result)
+
+```
+
+###### Estima el **CATE** mediante una regresión local con *kernel* triangular. Interpreta tu estimación en términos del efecto de ganar marginalmente la elección sobre la violencia en el municipio.
+
+Se estimó el CATE mediante regresión discontinua usando rdrobust, kernel triangular, El CATE estimado en el cutoff (spread = 0) es de 113.5 unidades de deathsx, con intervalo de confianza al 95% \[14.4, 212.7\], y p-valor 0.025. Lo que quiere decir que ganar marginalmente la elección incrementa de manera significativa el nivel de violencia en el municipio.
+
+###### Compara este resultado con el **LATE** que obtuviste en la estimación de **IV**. ¿Cómo son diferentes?
+
+-   El LATE estimado por IV fue de -0.3226 (p = 0.207), pequeño y no significativo.
+
+-   El CATE en RD fue de 113.5 (p = 0.025), positivo y significativo.
+
+IV capta un efecto promedio entre compliers, expuesto a heterogeneidad. RD estima un efecto local más limpio en municipios apenas ganadores o perdedores, bajo continuidad.
+
+###### Realiza un **McCrary Density Test**. Interpreta tus resultados.
+
+Se realizó el McCrary Density Test para verificar la continuidad de la densidad del running variable (spread) en el punto de corte. El p-valor obtenido fue de 0.9392, por lo que no se rechaza la hipótesis nula de continuidad. Esto indica que no hay evidencia de manipulación del running variable alrededor del cutoff,
+
+```{r}
+#| warning: false
+#| echo: false
+mccrary_test <- rddensity(X = df2$spread, c = 0)
+summary(mccrary_test)
+
+```
+
+#### 4) Uno de los investigadores de tu equipo busca robustecer nuestro análisis para presentar un reporte completo al gobierno. Propones usar el método de **matching** para emparejar localidades con alta violencia con localidades similares sin violencia, y así estimar un efecto causal más confiable sobre el puntaje de la prueba *Connected*.
+
+```{r}
+#| warning: false
+#| echo: false
+# Ajustar regresión completa
+modelo_parametrico <- lm(deathsx ~ pdu + spread + pdu:spread, data = df2)
+# Ver resumen
+summary(modelo_parametrico)
+
+```
+
+##### 4a) Considera el siguiente tratamiento: **Tratamiento:** localidades con una tasa de homicidios por cada 100,000 habitantes (**deathsx**) por encima de la mediana. **Control:** localidades con una tasa de homicidios por cada 100,000 habitantes (**deathsx**) por debajo de la mediana.Realiza un emparejamiento **PMS** (*propensity score matching*), comparando las diferentes características municipales: analfabetismo, educación básica, acceso a energía, piso de tierra, drenaje, y si el PDU ganó la elección.
+
+Se implementó un emparejamiento por puntaje de propensión (PSM) donde el tratamiento se definió como localidades con tasas de homicidio por encima de la mediana. Bajo el supuesto de independencia condicional, el matching busca replicar un escenario de asignación aleatoria, controlando por características observables como analfabetismo, educación básica, acceso a servicios, piso de tierra, drenaje y preferencia política. Así, la comparación entre localidades tratadas y controles pretende capturar un efecto causal más confiable que el obtenido mediante OLS simple.
+
+```{r}
+#| warning: false
+#| echo: false
+#  tratamiento
+md <- median(df1$deathsx, na.rm = TRUE)
+
+df1 <- df1 %>%
+  mutate(treated = ifelse(deathsx > md, 1, 0))
+
+#  Matching
+agg1 <- matchit(treated ~ analfabetismo + sin_edbasica + sin_acceso_energia + pisotierra + sin_drenaje + pdu,
+                data = df1,
+                method = "nearest",
+                distance = "logit")
+
+# Base matched
+matched_data <- match.data(agg1)
+
+modelo_wls <- lm(p_conncected ~ treated, data = matched_data, weights = weights)
+
+# Errores estándar robustos
+robust_se <- sqrt(diag(vcovHC(modelo_wls, type = "HC1")))
+
+stargazer(modelo_wls, 
+          type = "text",
+          se = list(robust_se),
+          title = "Resultados de Matching ponderado (WLS)",
+          covariate.labels = c("Alta violencia (treated)"),
+          dep.var.labels = "Puntaje Connected")
+```
+
+##### 4b) Evalúa el balance de las variables antes y después del *matching* e interpreta tus resultados.
+
+El matching redujo las diferencias en covariables, mejorando la comparabilidad entre localidades tratadas y de control. Sin embargo, el efecto estimado de alta violencia sobre el puntaje fue de -9.90 puntos y no resultó estadísticamente significativo. lo que quiere decir que aunque el diseño mejora respecto a OLS, no se encuentra evidencia causal robusta de que la violencia afecte el desempeño académico.
+
+```{r}
+#| warning: false
+#| echo: false
+# Extraer coeficientes con IC
+tidy_coef <- tidy(modelo_wls, conf.int = TRUE)
+
+# Graficar
+ggplot(tidy_coef %>% filter(term == "treated"), aes(x = estimate, y = term)) +
+  geom_point() +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0.2) +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  labs(title = "Efecto causal estimado: alta violencia sobre p_connected",
+       x = "Efecto estimado (coeficiente)",
+       y = "") +
+  theme_minimal()
+
+```
+
+```{r}
+#| warning: false
+#| echo: false
+love.plot(agg1, 
+          threshold = 0.1,
+          var.order = "unadjusted",
+          abs = TRUE,
+          stars = "raw",
+          line = TRUE,
+          binary = "std") +
+  theme_minimal()
+
+```
